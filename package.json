@@ -19,7 +19,9 @@
   "homepage": "https://github.com/Sumtwelve/employee-tracker#readme",
   "dependencies": {
     "console.table": "^0.10.0",
+    "dotenv": "^16.0.3",
     "inquirer": "^8.2.4",
-    "mysql2": "^3.2.0"
+    "mysql2": "^3.2.0",
+    "sequelize": "^6.30.0"
   }
 }
