@@ -1,4 +1,5 @@
 const inquirer = require('inquirer');
+const cTable = require('console.table');
 
 // wanted to make this somewhat fancy so here's a fancy logo
 // I put it into a separate function to reduce clutter
@@ -16,7 +17,7 @@ inquirer
             name: "mainMenuSelection"
         },
         {
-
+            
         }
     ])
     .then((answers) => {
