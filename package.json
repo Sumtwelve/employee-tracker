@@ -2,8 +2,9 @@
   "name": "w12-employee-tracker",
   "version": "1.0.0",
   "description": "A command-line CMS to manage your departments and employees.",
-  "main": "main.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node main.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -20,7 +21,6 @@
   "dependencies": {
     "console.table": "^0.10.0",
     "dotenv": "^16.0.3",
-    "express": "^4.18.2",
     "inquirer": "^8.2.4",
     "mysql2": "^3.2.0"
   }
