@@ -4,6 +4,8 @@ require('dotenv').config();
 const inquirer = require('inquirer');
 const cTable = require('console.table');
 
+// Importing a function I wrote to create the database if it doesn't exist yet.
+// Putting it in a separate function helps reduce clutter
 const initDB = require('./initDB');
 
 // Connect to database
@@ -23,10 +25,11 @@ const db = mysql.createConnection(
 // create and use database
 db.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME};
           USE ${process.env.DB_NAME};`, 
-        (err, results) => {
+        (err) => {
             if (err) {
-                console.error(err);
-                return;
+                console.error(err)
+                console.log("\nERROR: Failed to initialize database. Exiting program.");
+                return db.end();
             }
             // DB connection and query must finish before inquirer can start running.
             // To accomplish this, I put the inquirer code into a chain of discrete functions
@@ -39,7 +42,7 @@ db.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME};
 
 function mainMenu() {
     
-    console.log("\n-=<(  MAIN MENU  )>=-\n")
+    console.log("\n-=<(  MAIN MENU  )>=-\n");
 
     inquirer
         .prompt([
@@ -55,102 +58,110 @@ function mainMenu() {
         .then((answers) => {
             switch (answers.mainMenuSelection) {
                 case "View all departments":
-                    viewAllDepartments();
-                    break;
+                    return viewAllDepartments();
 
                 case "View all roles":
-                    viewAllRoles();
-                    break;
+                    return viewAllRoles();
 
                 case "View all employees":
-                    viewAllEmployees();
-                    break;
+                    return viewAllEmployees();
 
                 case "Add a department":
-                    createDepartment(answers.newDeptName);
-                    break;
+                    return createDepartment();
 
                 case "Add a role":
-                    createRole(answers.newRoleName, answers.newRoleSalary);
-                    break;
+                    return createRole();
 
                 case "Add an employee":
-                    createEmployee();
-                    break;
+                    return createEmployee();
 
                 case "Edit an employee role":
-                    editEmployeeRole();
-                    break;
+                    return editEmployeeRole();
 
                 case "Exit":
                     console.log("Goodbye!");
-                    db.end();
-                    break;
+                    return db.end();
 
                 default:
-                    console.log("Invalid value detected. Returning to main menu.");
-                    mainMenu();
-                    break;
+                    console.log("Invalid selection.");
+                    return mainMenu();
             }
         })
-        .catch((error) => {
-            console.error(error);
+        .catch((err) => {
+            console.error(err);
+            console.log("\nInquirer error detected. Returning to main menu...\n");
+            return mainMenu();
         });
 };
 
 
 function viewAllDepartments() {
-    db.query('SELECT * FROM departments;', (err, results) => {
+    db.query('SELECT id AS ID, name AS Name FROM departments;', (err, results) => {
         if (err) {
-            return console.error(err);
-        }
-        if (results.length === 0) {
+            console.error(err);
+            console.log("\nQuery failed. Returning to main menu...\n");
+        } else if (results.length === 0) {
             // If we're here that means there are no departments in the database.
             // Print in red for better visibility.
             console.log("\x1b[31m%s\x1b[0m", "There are no departments in the database to view.\nPlease select \"Add a department\" from the main menu.");
-            mainMenu();
         } else {
             console.log(); // just an empty line for spacing
             console.table(results);
-            mainMenu();
         }
+
+        return mainMenu();
     });
 }
 
 function viewAllRoles() {
-    db.query('SELECT * FROM roles;', (err, results) => {
+    // SQL command to display the role name and salary next to the name of its department
+    db.query(`SELECT r.title AS Role, r.salary AS Salary, d.name AS Department
+              FROM roles as r
+              JOIN departments as d
+              ON r.department_id = d.id; `, (err, results) => {
         if (err) {
-            return console.error(err);
-        }
-        if (results.length === 0) {
+            console.error(err);
+            console.log("\nQuery failed. Database unaffected. Returning to main menu...\n");
+        } else if (results.length === 0) {
             // If we're here that means there are no roles in the database.
             // Print in red for better visibility.
             console.log("\x1b[31m%s\x1b[0m", "There are no roles in the database to view.\nPlease select \"Add a role\" from the main menu.");
-            mainMenu();
         } else {
             console.log(); // just an empty line for spacing
             console.table(results);
-            mainMenu();
         }
+
+        return mainMenu();
     });
 }
 
 
 function viewAllEmployees() {
-    db.query('SELECT * FROM employees JOIN roles', (err, results) => {
+    // SQL command to display the employee's role, manager status, and manager's ID next to their ID and name
+    db.query(`SELECT 
+                 e.id as ID,
+                 e.First_Name,
+                 e.Last_Name,
+                 r.title AS Role,
+                 r.salary AS Salary,
+                 IF(e.manager_id, manager_id, '-') Manager_ID,
+                 IF(e.is_manager, 'MGR', '-') Is_Manager
+              FROM employees as e
+              JOIN roles as r
+              ON e.role_id = r.id;`, (err, results) => {
         if (err) {
-            return console.error(err);
-        }
-        if (results.length === 0) {
+            console.error(err);
+            console.log("\nQuery failed. Returning to main menu...\n");
+        } else if (results.length === 0) {
             // If we're here that means there are no employees in the database.
             // Print in red for better visibility.
             console.log("\x1b[31m%s\x1b[0m", "There are no employees in the database to view.\nPlease select \"Add an employee\" from the main menu.");
-            mainMenu();
         } else {
             console.log(); // just an empty line for spacing
             console.table(results);
-            mainMenu();
         }
+
+        return mainMenu();
     });
 }
 
@@ -165,23 +176,35 @@ function createDepartment() {
             }
         ])
         .then(answers => {
+            if (answers.newDeptName === "") {
+                console.log("Cannot accept empty field. Please try again.");
+                return createDepartment();
+            }
             answers.newDeptName = toTitleCase(answers.newDeptName);
             db.query(`INSERT INTO departments
                       VALUES (NULL, "${answers.newDeptName}");`,
                 (err) => {
                     if (err) {
-                        console.error(err);
-                        mainMenu();
-                    } else {
-                        console.log('\x1b[33m%s\x1b[0m', `Department '${answers.newDeptName}' added to database.`);
-                        mainMenu();
+                        // Duplicate entry detected, prompt user to try again
+                        if (err.code === 'ER_DUP_ENTRY') {
+                            console.log(`A department with the name ${answers.newDeptName} already exists.`);
+                            return createDepartment();
+                        } else {
+                            console.error(err);
+                            return mainMenu();
+                        }
                     }
-                })
+                    console.log('\x1b[33m%s\x1b[0m', `Department '${answers.newDeptName}' added to database.`);
+                    return mainMenu();
+                });
         })
         .catch(err => {
-            if (err) console.error(err);
-            mainMenu();
-        })
+            if (err) {
+                console.error(err);
+                console.log("\nInquirer error detected. Returning to main menu...\n")
+            } 
+            return mainMenu();
+        });
 }
 
 
@@ -190,87 +213,124 @@ function createRole() {
     db.query(`SELECT * FROM departments;`, (err, results) => {
         if (err){
             console.error(err);
-            console.log("SELECT * FROM departments query failed. Returning to main menu.");
-            mainMenu();
-        } else {
-            
-            if (results.length === 0) { // IF THERE ARE NO DEPARTMENTS
-                inquirer
-                    .prompt([
-                        {
-                            type: "list",
-                            message: "There are no departments to add a role to. Create a department now?",
-                            choices: ["Yes, create a department now", "No, go back to the main menu"],
-                            name: "createDeptYesNo"
-                        }
-                    ])
-                    .then((answers) => {
-                        if (answers.createDeptYesNo === "Yes, create a department now") {
-                            createDepartment();
-                        } else {
-                            mainMenu();
-                        }
-                    })
-                    .catch((err) => {
-                        if (err) console.error(err);
-                        mainMenu();
-                    })
-            } else { // IF THERE ARE DEPARTMENTS
-                // We need to get a list of departments first so we can ask the user which department the new role belongs to.
-                let rolesList = [];
-                for (let department of results) {
-                    rolesList.push(department.name);
-                }
+            console.log("\nQuery failed. Returning to main menu...\n");
+            return mainMenu();
+        }
 
-                inquirer
-                    .prompt([
-                        {
-                            type: "input",
-                            message: "New role title:",
-                            name: "title"
-                        },
-                        {
-                            type: "input",
-                            message: "Salary for this role:",
-                            name: "salary"
-                        },
-                        {
-                            type: "list",
-                            message: "Which department will have this role?",
-                            choices: rolesList,
-                            name: "parentDepartment"
-                        }
-                    ])
-                    .then((role) => {
-                        // FIXME: DICEY METHOD FOR FINDING THE DEPARTMENT_ID.
-                        // This only works if we assume a department's 1-based position in this `rolesList` array
-                        // is the same as its ID in the `departments` table.
-                        // That won't be true if a department is ever deleted from the table, because the IDs
-                        // obviously won't all just shift to fill the gap, and AUTO_INCREMENT won't automatically adjust
-                        // if the deleted department was at the end of the table.
-                        // I can keep this here for now, because there currently is no way for the user to delete a department,
-                        // unless they open a mysql terminal and run a delete command themselves.
-                        let departmentID = (rolesList.indexOf(role.parentDepartment) + 1);
+        if (results.length === 0) { // IF THERE ARE NO DEPARTMENTS
+            inquirer
+                .prompt([
+                    {
+                        type: "list",
+                        message: "There are no departments to add a role to. Create a department now?",
+                        choices: ["Yes, create a department now", "No, go back to the main menu"],
+                        name: "createDeptYesNo"
+                    }
+                ])
+                .then((answers) => {
+                    if (answers.createDeptYesNo === "Yes, create a department now") {
+                        return createDepartment();
+                    }
+                })
+                .catch((err) => {
+                    if (err){
+                        console.error(err);
+                        console.log("\nInquirer error detected. Returning to main menu...\n");
+                    }
+                });
+                return mainMenu();
+        } else { // IF THERE ARE DEPARTMENTS
+            // We need to get a list of departments first
+            // so we can ask the user which department the new role belongs to.
+            let departmentsList = [];
+            for (let department of results) {
+                departmentsList.push(department.name);
+            }
 
-                        // FIXME: Is it ok to run a db.query() INSIDE another db.query()'s callback like we're doing here?
-                        db.query(`INSERT INTO roles
-                                  VALUES (NULL,
-                                          '${toTitleCase(role.title)}',
-                                          ${parseFloat(role.salary)},
-                                          ${departmentID});`,
+            inquirer
+                .prompt([
+                    {
+                        type: "input",
+                        message: "New role title:",
+                        name: "title"
+                    },
+                    {
+                        type: "input",
+                        message: "Salary for this role:",
+                        name: "salary"
+                    },
+                    {
+                        type: "list",
+                        message: "Which department will have this role?",
+                        choices: departmentsList,
+                        name: "parentDepartment"
+                    }
+                ])
+                .then((role) => {
+
+                    // 'answers' holds just the user's inputs. Extracted from the 'role' object.
+                    // This gives us an array, making it easy to check input validity.
+                    let answers = Object.values(role);
+
+                    // fields cannot be empty
+                    if (answers.includes("")) {
+                        console.log("Cannot accept empty field. Please try again.");
+                        return createRole();
+                    }
+
+                    // I know we're already in a db.query, but we need to nest two more.
+                    // Creating a role requires that we have the ID of its parent department.
+                    // The only reliable way to get that ID is to run a query.
+                    // In the callback of this query will be another query to insert the new role
+                    // into the table.
+                    db.query(`SELECT id FROM departments WHERE name='${role.parentDepartment}';`,
                         (err, results) => {
                             if (err) {
                                 console.error(err);
+                                console.log("\nQuery failed. Returning to main menu.\n");
+                                return mainMenu();
+                            } else if (results.length > 1) { // Two departments with the same id found. Bad news.
+                                // background color red, foreground white
+                                console.error("\x1b[41m\x1b[47m%s\x1b[0m", "ERROR: DUPLICATE DEPARTMENT IDs FOUND." + 
+                                                                    "PLEASE MANUALLY SANITIZE THE DATABASE" +
+                                                                    "BEFORE RUNNING THE CMS AGAIN.");
+                                for (let department of results) {
+                                    console.log(department); // logs all departments of this id
+                                }
+                                // Rather critical error. I'd rather the program stop running now.
+                                return db.end();
                             } else {
-                                console.log('\x1b[33m%s\x1b[0m', `New role '${role.title}' added to database.`);
+                                // Results is an array, should only have one object,
+                                // so we can safely hardcode this reference to position 0.
+                                let departmentID = results[0].id;
+                                db.query(`INSERT INTO roles
+                                            VALUES (NULL,
+                                                '${toTitleCase(role.title)}',
+                                                ${parseFloat(role.salary)},
+                                                ${departmentID}
+                                            );`,
+                                (err) => {
+                                    if (err) {
+                                        console.error(err);
+                                        console.log("\nQuery failed. Returning to main menu...\n");
+                                        return mainMenu();
+                                    }
+
+                                    // Yellow text for emphasis
+                                    console.log('\x1b[33m%s\x1b[0m', `New role '${role.title}' added to database.`);
+                                    return mainMenu();
+                                });
                             }
-                            mainMenu();
-                        })
-                    })
-                    .catch((err) => {
-                        if (err) console.error(err);
-                    })
-            }
+                        }
+                    );
+                })
+                .catch((err) => {
+                    if (err) {
+                        console.error(err);
+                        console.log("\nInquirer error detected. Returning to main menu...\n");
+                        return mainMenu();
+                    }
+                });
         }
     });
 }
@@ -284,134 +344,168 @@ function createEmployee() {
     db.query(`SELECT * FROM roles;`, (err, results) => {
         if (err){
             console.error(err);
-            console.log("SELECT * FROM roles query failed. Returning to main menu.");
-            mainMenu();
-        } else {
+            console.log("\nQuery failed. Returning to main menu...\n");
+            return mainMenu();
+        }
             
-            if (results.length === 0) { // IF THERE ARE NO ROLES
-                inquirer
-                    .prompt([
-                        {
-                            type: "list",
-                            message: "There are no roles to add an employee to. Create a department now?",
-                            choices: ["Yes, create a role now", "No, go back to the main menu"],
-                            name: "createRoleYesNo"
-                        }
-                    ])
-                    .then((answers) => {
-                        if (answers.createRoleYesNo === "Yes, create a role now") {
-                            createRole();
-                        } else {
-                            mainMenu();
-                        }
-                    })
-                    .catch((err) => {
-                        if (err) console.error(err);
-                        mainMenu();
-                    })
-            } else { // IF THERE ARE ROLES
-                // We need to get a list of roles first so we can ask the user which role the new employee has.
-                // This is more sanitary than having the user manually type in the name of the role and having to check for typos.
-                let rolesList = [];
-                for (let role of results) {
-                    rolesList.push(role.title);
-                }
+        if (results.length === 0) { // IF THERE ARE NO ROLES
+            inquirer
+                .prompt([
+                    {
+                        type: "list",
+                        message: "There are no roles to add an employee to. Create a department now?",
+                        choices: ["Yes, create a role now", "No, go back to the main menu"],
+                        name: "createRoleYesNo"
+                    }
+                ])
+                .then((answers) => {
+                    if (answers.createRoleYesNo === "Yes, create a role now") {
+                        return createRole();
+                    }
+                    
+                    console.log("Returning to main menu...");
+                    return mainMenu();
+                })
+                .catch((err) => {
+                    if (err) console.error("\nInquirer error detected. Returning to main menu...\n");
+                    return mainMenu();
+                });
+        } else { // IF THERE ARE ROLES
+            // We need to get a list of roles first so we can ask the user which role the new employee has.
+            // This is more sanitary than having the user manually type in the name of the role
+            // and having to check for typos.
+            let rolesList = [];
+            for (let role of results) {
+                rolesList.push(`${role.title} (ID: ${role.id})`);
+            }
 
-                let managersList = [];
-                // db.query('SELECT * FROM employees WHERE is_manager=1',
-                //     (err, results) => {
+            // If there are no managers in the database, we can't ask if this new employee has a manager
+            // because there will be no manager to link them to, and the INSERT command will fail.
+            // To avoid that, we do a couple things. First, make a separate boolean
+            // and use Inquirer's 'when' property to only ask 'does employee have manager'
+            // when that boolean is true. We only set the boolean to false if there are no managers.
+            // Second, if there are no managers, set `managerID` variable below to a string of value "NULL".
+            // When the INSERT command runs, NULL will be passed in as the manager_id
+            // and the command won't fail because manager_id CAN be null.
+            let managersList = [];
+            let askIfHasManager = false;
+            db.query('SELECT * FROM employees WHERE is_manager=TRUE',
+                (err, results) => {
+                    if (err) {
+                        console.error(err);
+                        console.log("\nQuery failed. Returning to main menu...\n")
+                        return mainMenu();
+                    } else if (results.length === 0) {
+                        // no managers found, set our boolean to false
+                        askIfHasManager = false;
 
-                //     })
+                        // Warn user. They can create the employee record, but there will be no manager
+                        // tied to it. Also red text for emphasis.
+                        console.log("\x1b[31m%s", "Warning: No managers found in the database.");
+                        console.log("%s\x1b[0m", "This employee record will not be associated with a manager.");
+                    } else {
+                        // At least one manager found, Inquirer will prompt user to select
+                        // which manager to tie to this new employee record.
+                        askIfHasManager = true;
+                    }
 
-                // If there are no managers in the database, we can't ask if this new employee has a manager
-                // because there will be no manager to link them to, and the INSERT command will fail.
-                // To avoid that, we do a couple things. First, set a boolean to false and use Inquirer's 'when' property
-                // to only ask if the employee has a manager when that boolean is true. We only set the boolean to false
-                // if there are no managers. Second, set `managerID` variable below to a string of value "NULL".
-                // When the INSERT command runs, NULL will be passed in as the manager_id and the command shouldn't fail.
-                let askIfHasManager = false;
+                    for (let employeeRecord of results) {
+                        managersList.push(`${employeeRecord.first_name} ${employeeRecord.last_name} (ID: ${employeeRecord.id})`);
+                    }
 
-                inquirer
-                    .prompt([
-                        {
-                            type: "input",
-                            message: "Employee's first name:",
-                            name: "firstName"
-                        },
-                        {
-                            type: "input",
-                            message: "Employee's last name:",
-                            name: "lastName"
-                        },
-                        {
-                            type: "list",
-                            message: "Is this employee a manager?",
-                            choices: ["Yes", "No"],
-                            name: "isManager"
-                        },
-                        {
-                            type: "list",
-                            message: "What is the new employee's role?",
-                            choices: rolesList,
-                            name: "role"
-                        },
-                        {
-                            type: "list",
-                            message: "Does this employee have a manager?",
-                            choices: ["Yes", "No"],
-                            when: () => askIfHasManager === true,
-                            name: "hasManager"
-                        },
-                        {
-                            type: "list",
-                            message: "Who is this employee's manager?",
-                            choices: managersList,
-                            when: (employee) => employee.hasManager === "Yes",
-                            name: "managerName"
-                        }
-                    ])
-                    .then((employee) => {
-                        // Convert the user-facing 'yes'/'no' into a database-facing 'true'/'false'
-                        employee.isManager === "Yes" ? employee.isManager = true : employee.isManager = false;
+                    inquirer
+                        .prompt([
+                            {
+                                type: "input",
+                                message: "Employee's first name:",
+                                name: "firstName"
+                            },
+                            {
+                                type: "input",
+                                message: "Employee's last name:",
+                                name: "lastName"
+                            },
+                            {
+                                type: "list",
+                                message: "Is this employee a manager?",
+                                choices: ["Yes", "No"],
+                                name: "isManager"
+                            },
+                            {
+                                type: "list",
+                                message: "What is the new employee's role?",
+                                choices: rolesList,
+                                name: "role"
+                            },
+                            {
+                                type: "list",
+                                message: "Does this employee have a manager?",
+                                choices: ["Yes", "No"],
+                                when: () => askIfHasManager === true,
+                                name: "hasManager"
+                            },
+                            {
+                                type: "list",
+                                message: "Who is this employee's manager?",
+                                choices: managersList,
+                                when: (employee) => employee.hasManager === "Yes",
+                                name: "managerInfo"
+                            }
+                        ])
+                        .then((employee) => {
+                            // Convert the user-facing 'yes'/'no' into a database-facing 'true'/'false'
+                            employee.isManager === "Yes" ? employee.isManager = true : employee.isManager = false;
 
-                        // FIXME: DICEY METHOD FOR FINDING THE ROLE_ID. (identical problem within the createRole() function above)
-                        // This only works if we assume a role's 1-based position in this `rolesList` array
-                        // is the same as its ID in the `roles` table.
-                        // That won't be true if a role is ever deleted from the table, because the IDs
-                        // obviously won't all just shift to fill the gap, and AUTO_INCREMENT won't automatically adjust
-                        // if the deleted role was at the end of the table.
-                        // I can keep this here for now, because there currently is no way for the user to delete a role,
-                        // unless they open a mysql terminal and run a delete command themselves.
-                        let roleID = (rolesList.indexOf(employee.role) + 1);
-                        let managerID = (managersList.indexOf(employee.managerName) + 1);
+                            // Some lazy trickery to get the manager and role IDs.
+                            // I don't want to nest two more db queries just to get those numbers,
+                            // so I baked their IDs into each string in rolesList[] and managersList[].
+                            // All I have to do now is build a regex to extract the IDs from whichever
+                            // strings the user selected for this employee's role and manager.
+                            // Maybe not super elegant but it will save me from callback hell.
+                            let idRegex = /(\d+)\)$/; // capture group grabs ONLY the ID itself
 
-                        // FIXME: Is it ok to run a db.query() INSIDE another db.query()'s callback like we're doing here?
-                        db.query(`INSERT INTO employees
-                                  VALUES (NULL,
-                                          '${toTitleCase(employee.firstName)}',
-                                          '${toTitleCase(employee.lastName)}',
-                                          ${employee.isManager},
-                                          ${roleID},
-                                          NULL);`,
-                        (err, results) => {
+                            // Apply regex to role and manager strings to extract IDs
+                            let roleID = employee.role.match(idRegex)[1]; // position 1 has the captured group
+                            let managerID;
+                            // If there aren't any managers in the db, managerID must be 'NULL'.
+                            // This boolean can tell us if there are or aren't any managers in the db.
+                            if (askIfHasManager) {
+                                managerID = employee.managerInfo.match(idRegex)[1];
+                            } else {
+                                managerID = "NULL";
+                            }
+
+                            db.query(`INSERT INTO employees
+                                        VALUES (NULL,
+                                                '${toTitleCase(employee.firstName)}',
+                                                '${toTitleCase(employee.lastName)}',
+                                                ${employee.isManager},
+                                                ${roleID},
+                                                ${managerID});`,
+                                (err) => {
+                                    if (err) {
+                                        console.error(err);
+                                    } else {
+                                        console.log('\x1b[33m%s\x1b[0m', `New employee '${toTitleCase(employee.firstName)} ${toTitleCase(employee.lastName)}' added to database.`);
+                                    }
+                                    mainMenu();
+                                }
+                            );
+                        })
+                        .catch((err) => {
                             if (err) {
                                 console.error(err);
-                            } else {
-                                console.log('\x1b[33m%s\x1b[0m', `New employee '${toTitleCase(employee.firstName)} ${toTitleCase(employee.lastName)}' added to database.`);
+                                console.log("\nInquirer error detected. Returning to main menu...\n");
+                                return mainMenu();
                             }
-                            mainMenu();
-                        })
-                    })
-                    .catch((err) => {
-                        if (err) console.error(err);
-                    })
-            }
+                        });
+                });
         }
     });
 }
 
 function editEmployeeRole() {
-    db.end();
+    
 }
 
 /**
@@ -432,5 +526,6 @@ function printTitleScreen() {
     console.log("||    E M P L O Y E E    T R A C K E R   |");
     console.log("\\|_______________________________________|\n");
     console.log("Welcome to Sumtwelve's Employee Tracker!");
-    console.log("An easy-to-use CMS right in your favorite command line.")
+    console.log("An easy-to-use CMS right in your favorite command line.");
+    console.log("(To cancel any prompts, hit CTRL+C in the terminal and restart the program.)")
 }
