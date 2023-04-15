@@ -1,7 +1,7 @@
+![a small badge indicating the MIT license](https://img.shields.io/badge/license-MIT-blue)
+
 # Employee Tracker
 A command-line CMS to manage your employees.
-
-![a small badge indicating the MIT license](https://img.shields.io/badge/license-MIT-blue)
 
 ![a screenshot demonstrating usage of the software](./cms-screenshot.jpg)
 
