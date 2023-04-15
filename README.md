@@ -6,7 +6,7 @@ A command-line CMS to manage your employees.
 ![a screenshot demonstrating usage of the software](./cms-screenshot.jpg)
 
 ## Installation
-This software uses MySQL to create its database. You'll need MySQL installed on your computer or this program won't work. You can download the MySQL Shell [here](https://dev.mysql.com/downloads/shell/)
+This software uses MySQL to create its database. You'll need MySQL installed on your computer or this program won't work. You can download the MySQL Shell [here](https://dev.mysql.com/downloads/shell/).
 
 Check out [this video](https://youtu.be/A440kEjFps4) for an in-depth guide I made on installing and utilizing this software. Or if you prefer, you can follow these written instructions:
 
